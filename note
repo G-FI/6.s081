@@ -1,0 +1,10 @@
+1. inode addrs record the blocks of that this inode used, when change the max blocks from 12 + 256 to 11 + 256 + 256*256, we need to use a 3 levels table like virtual pagetable, and only alloc when need to use.
+2. bmap use the blockno in inode 0~12+255 or 0~11 + 256 + 256*256 to get thereal blockno in disk
+3.! whenever read a block you need by bread, you should brelse the block
+4. in itrunc inode, you should free all the blocks storing blockno and cleanup ip->addres
+
+
+
+/*****symbol link*****/
+1.in sys_symlink: just need to create an inode, and mark its type is T_SYMLINK, store the target file name in its block(just use writei and readi), !!!you don't need to create a file like what sys_open does.
+2. when open the link file, if O_NOFOLLOW, then just open the link file(don't do anything), or you should follow the linked file: read the linked file's name from inode(readi) recursively until depth over 10 or the inode->type is not a T_SYMLINK.
