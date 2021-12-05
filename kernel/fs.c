@@ -390,15 +390,40 @@ bmap(struct inode *ip, uint bn)
   if(bn < NINDIRECT){
     // Load indirect block, allocating if necessary.
     if((addr = ip->addrs[NDIRECT]) == 0)
-      ip->addrs[NDIRECT] = addr = balloc(ip->dev);
+      ip->addrs[NDIRECT] = addr = balloc(ip->dev);//allocte indirect block.
     bp = bread(ip->dev, addr);
-    a = (uint*)bp->data;
+    a = (uint*)bp->data;  //to get corresponding blockno of bn
     if((addr = a[bn]) == 0){
-      a[bn] = addr = balloc(ip->dev);
-      log_write(bp);
+      a[bn] = addr = balloc(ip->dev); //logic block bn is not allocted.
+      log_write(bp); //modify block bp, so we need to write back
     }
     brelse(bp);
     return addr;
+  }
+  bn -= NINDIRECT;
+  if(bn < NDINDIRECT){
+	//need the first layer
+	if((addr = ip->addrs[NDIRECT + 1]) == 0){
+	  ip->addrs[NDIRECT + 1] = addr = balloc(ip->dev);
+	}
+	int entry1 = bn/256;
+	int entry2 = bn%256;
+	bp = bread(ip->dev, addr);
+	a = (uint*)bp->data;
+	//need second layer
+	if((addr = a[entry1]) == 0){
+	   a[entry1] = addr = balloc(ip->dev);
+	   log_write(bp); //a is referred to block bp, when modify bp, we need to write back
+	}
+	brelse(bp);
+	bp = bread(ip->dev, addr);
+	a = (uint*)bp->data;
+	if((addr=a[entry2]) == 0){
+	  a[entry2] = addr = balloc(ip->dev);
+	  log_write(bp);
+	}
+	brelse(bp);
+	return addr;
   }
 
   panic("bmap: out of range");
@@ -431,6 +456,30 @@ itrunc(struct inode *ip)
     bfree(ip->dev, ip->addrs[NDIRECT]);
     ip->addrs[NDIRECT] = 0;
   }
+
+  if(ip->addrs[NDIRECT + 1]){
+	struct buf* bp2;
+	uint* a2;
+    bp = bread(ip->dev, ip->addrs[NDIRECT + 1]);
+ 	a = (uint*)bp->data;//refer to first layer
+	for(i = 0; i < 256; i++){
+	  if(a[i]){ 
+	  	bp2 = bread(ip->dev, a[i]);
+		a2 = (uint*)bp2->data; // refer to second layer
+		for(j = 0; j < 256; j++){
+		  if(a2[j]){ //refer to data block
+		    bfree(ip->dev, a2[j]);
+		  }
+		}
+		brelse(bp2);
+	  }
+	}
+	brelse(bp);
+	bfree(ip->dev, ip->addrs[NDIRECT + 1]);	
+  	ip->addrs[NDIRECT + 1] = 0;
+  }
+
+
 
   ip->size = 0;
   iupdate(ip);

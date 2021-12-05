@@ -15,6 +15,7 @@
 #include "sleeplock.h"
 #include "file.h"
 #include "fcntl.h"
+#include "buf.h"
 
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
@@ -247,7 +248,7 @@ create(char *path, short type, short major, short minor)
   if((dp = nameiparent(path, name)) == 0)
     return 0;
 
-  ilock(dp);
+  ilock(dp); 	
 
   if((ip = dirlookup(dp, name, 0)) != 0){
     iunlockput(dp);
@@ -267,6 +268,7 @@ create(char *path, short type, short major, short minor)
   ip->nlink = 1;
   iupdate(ip);
 
+
   if(type == T_DIR){  // Create . and .. entries.
     dp->nlink++;  // for ".."
     iupdate(dp);
@@ -282,7 +284,6 @@ create(char *path, short type, short major, short minor)
 
   return ip;
 }
-
 uint64
 sys_open(void)
 {
@@ -304,11 +305,28 @@ sys_open(void)
       return -1;
     }
   } else {
-    if((ip = namei(path)) == 0){
+    if((ip = namei(path)) == 0){ //get inode of path 
       end_op();
       return -1;
     }
     ilock(ip);
+	int depth = 0;
+	while(ip->type == T_SYMLINK && !(omode & O_NOFOLLOW) && depth<10){
+      readi(ip, 0, (uint64)path, 0, MAXPATH); 
+	  iunlockput(ip);
+	  if((ip = namei(path)) == 0){
+	    end_op();
+		return -1;
+	  } 
+	  ilock(ip);
+	  depth +=1;
+	}
+    if(depth == 10){
+	  iunlockput(ip);
+	  printf("cycle link\n");
+	  end_op();
+	  return -1;
+	}
     if(ip->type == T_DIR && omode != O_RDONLY){
       iunlockput(ip);
       end_op();
@@ -333,7 +351,7 @@ sys_open(void)
   if(ip->type == T_DEVICE){
     f->type = FD_DEVICE;
     f->major = ip->major;
-  } else {
+  }else {
     f->type = FD_INODE;
     f->off = 0;
   }
@@ -350,6 +368,8 @@ sys_open(void)
 
   return fd;
 }
+
+
 
 uint64
 sys_mkdir(void)
@@ -482,5 +502,36 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+
+uint64
+sys_symlink(void)
+{
+  char target[MAXPATH], path[MAXPATH];
+  struct inode* ip;
+  if(argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
+	return -1;
+  begin_op();
+  if((ip = create(path, T_SYMLINK, 0, 0)) == 0){
+    end_op();
+	return -1;
+  }
+  if(writei(ip, 0, (uint64)target, 0, MAXPATH) != MAXPATH){
+   	end_op();
+	return -1;
+  }
+//  if((f = filealloc()) == 0 || (fd = fdalloc(f))<0){
+//    if(f)
+//	  fileclose(f);
+//	iunlockput(ip);
+//	end_op();
+//	return -1;
+//  }
+//  f->ip = ip;
+//  f->readable = O_WRONLY;
+//  f->writable = !O_WRONLY;
+  iunlockput(ip);
+  end_op();
   return 0;
 }

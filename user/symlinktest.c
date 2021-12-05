@@ -70,9 +70,9 @@ testsymlink(void)
   r = symlink("/testsymlink/a", "/testsymlink/b");
   if(r < 0)
     fail("symlink b -> a failed");
-
+  
   if(write(fd1, buf, sizeof(buf)) != 4)
-    fail("failed to write to a");
+    fail("failed to write to a"); 
 
   if (stat_slink("/testsymlink/b", &st) != 0)
     fail("failed to stat b");
@@ -85,7 +85,6 @@ testsymlink(void)
   read(fd2, &c, 1);
   if (c != 'a')
     fail("failed to read bytes from b");
-
   unlink("/testsymlink/a");
   if(open("/testsymlink/b", O_RDWR) >= 0)
     fail("Should not be able to open b after deleting a");
